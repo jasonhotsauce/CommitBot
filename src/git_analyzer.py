@@ -19,45 +19,61 @@ class GitAnalyzer:
             # Process normal staged changes
             for diff in staged_diff:
                 try:
-                    diff_text = diff.diff.decode('utf-8')
+                    # Get the raw diff text
+                    diff_text = self.repo.git.diff('--cached', diff.a_path)
+                    
+                    # Determine change type
+                    change_type = 'M'  # Default to modified
+                    if diff.new_file:
+                        change_type = 'A'
+                    elif diff.deleted_file:
+                        change_type = 'D'
+                    elif diff.renamed:
+                        change_type = 'R'
+                    
                     change_info = {
                         'path': diff.a_path,
-                        'change_type': diff.change_type,
+                        'change_type': change_type,
                         'additions': diff_text.count('\n+'),
                         'deletions': diff_text.count('\n-'),
-                        'diff': self.repo.git.diff('--cached', diff.a_path),
+                        'diff': diff_text,
                         'file_type': diff.a_path.split('.')[-1] if '.' in diff.a_path else 'unknown'
                     }
                     changes.append(change_info)
                 except Exception as e:
                     console.print(f"[warning]Could not process file {diff.a_path}: {str(e)}[/]")
                     
-        except Exception:
+        except Exception as e:
             # For newly initialized repositories
             console.print("[info]Processing new repository...[/]")
             
-        # Get all staged files (works for both new and existing repos)
-        staged_files = self.repo.git.diff('--cached', '--name-only').split('\n')
-        staged_files = [f for f in staged_files if f]  # Remove empty strings
-        
-        for staged_file in staged_files:
-            try:
-                # Get the diff for the staged file
-                diff_text = self.repo.git.diff('--cached', staged_file)
-                additions = diff_text.count('\n+')
-                deletions = diff_text.count('\n-')
-                
-                change_info = {
-                    'path': staged_file,
-                    'change_type': 'new file',  # Default to new file for initial commits
-                    'additions': additions,
-                    'deletions': deletions,
-                    'diff': diff_text,
-                    'file_type': staged_file.split('.')[-1] if '.' in staged_file else 'unknown'
-                }
-                changes.append(change_info)
-            except Exception as e:
-                console.print(f"[warning]Could not process file {staged_file}: {str(e)}[/]")
+            # Get all staged files (works for both new and existing repos)
+            staged_files = self.repo.git.diff('--cached', '--name-only').split('\n')
+            staged_files = [f for f in staged_files if f]  # Remove empty strings
+            
+            for staged_file in staged_files:
+                try:
+                    # Get the diff for the staged file
+                    diff_text = self.repo.git.diff('--cached', staged_file)
+                    
+                    # For new repositories, check if file exists in HEAD
+                    try:
+                        self.repo.head.commit.tree[staged_file]
+                        change_type = 'M'  # File exists in HEAD, so it's modified
+                    except (KeyError, ValueError):
+                        change_type = 'A'  # File doesn't exist in HEAD, so it's new
+                    
+                    change_info = {
+                        'path': staged_file,
+                        'change_type': change_type,
+                        'additions': diff_text.count('\n+'),
+                        'deletions': diff_text.count('\n-'),
+                        'diff': diff_text,
+                        'file_type': staged_file.split('.')[-1] if '.' in staged_file else 'unknown'
+                    }
+                    changes.append(change_info)
+                except Exception as e:
+                    console.print(f"[warning]Could not process file {staged_file}: {str(e)}[/]")
         
         return changes
     

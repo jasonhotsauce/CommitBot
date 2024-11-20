@@ -8,7 +8,7 @@ from rich.console import Console
 console = Console()
 
 class GitCommitAgent:
-    def __init__(self, model="gpt-4", verbose=False):
+    def __init__(self, model="gpt-4", local=False, verbose=False):
         self.model = model
         self.verbose = verbose
         self.conversation_history = []
@@ -20,6 +20,9 @@ class GitCommitAgent:
         elif model.startswith('claude'):
             self.api_type = 'anthropic'
             self.client = Anthropic(api_key=os.getenv('CLAUDE_API_KEY'))
+        elif local:
+            self.api_type = 'local'
+            self.client = OpenAI(base_url = 'http://localhost:11434/v1',api_key="ollama")
         else:
             raise ValueError(f"Unsupported model: {model}")
     
@@ -28,7 +31,15 @@ class GitCommitAgent:
         return [
             {
                 "name": "analyze_changes",
-                "description": "Analyze the changes in detail",
+                "description": """Analyze the staged changes in detail. For each file:
+                1. Check the Change Status:
+                   - 'Modified existing file' means changes to an existing file
+                   - 'New file' means a newly created file
+                2. Look at the actual diff content to identify:
+                   - What specific lines or functions were modified
+                   - What new parameters or features were added
+                   - What configurations or options were changed
+                3. Focus on the actual changes shown in the diff, not the entire file content""",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -45,7 +56,20 @@ class GitCommitAgent:
             },
             {
                 "name": "format_commit_message",
-                "description": "Format the final commit message following company standards",
+                "description": """Format a commit message that precisely describes the actual changes.
+                Rules for different change types:
+                - For modified files: Use verbs like 'update', 'add support for', 'enhance'
+                - For new files: Use 'add' or 'create'
+                - For new features in existing files: Use 'add [feature] to [existing component]'
+                
+                Message structure:
+                1. First line: {type}: {what changed and why, max 100 chars}
+                2. Two blank lines
+                3. Detailed description:
+                   - Start with what the changes accomplish
+                   - List specific modifications per file
+                   - Include technical details from the diff
+                   - Use bullet points for clarity""",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -204,47 +228,33 @@ class GitCommitAgent:
                    - Description must be under 100 chars and describe the actual change
                    - Never end with a period
                    - Use imperative mood ("add" not "adds" or "added")
+                   - For modifications to existing code, use verbs like "update", "modify", "enhance"
+                   - Only use "add" when introducing completely new files or features
                 
                 2. Add exactly TWO blank lines after the first line
                 
                 3. Detailed description must:
                    - Only describe changes that are actually present in the diff
+                   - Pay strict attention to the Change Status of each file:
+                     * "Modified existing file" means the file existed before and was changed
+                     * "New file" means this is the first commit introducing this file
                    - Start with a clear overview of what the changes accomplish
                    - Include a file-by-file breakdown for multiple file changes
-                   - Mention specific functions/features that were modified
-                   - Highlight any important technical details from the diff
+                   - For modified files:
+                     * Focus on what was changed in the file
+                     * Describe specific modifications made
+                     * Don't describe the file as new or added
+                   - For new files:
+                     * Indicate that they are new additions
                    - Use bullet points for multiple changes
+                   - Be precise about what was actually changed
                    - Never make assumptions about changes not shown in the diff
-                   - Never include speculative or future changes
                 
-                Examples of good commit messages:
-
-                feat: add git diff analysis functionality to GitAnalyzer class
-
-
-                Implement detailed git diff analysis in GitAnalyzer:
-                - Add get_staged_changes() method to extract diff information
-                - Implement diff parsing for additions and deletions count
-                - Add file type detection based on file extensions
-                - Handle both new and modified files in the diff
-                
-                Technical details:
-                - Use GitPython's diff interface for staged changes
-                - Implement proper error handling for binary files
-                - Add type hints and documentation
-
-                ---
-                fix: resolve crash when analyzing binary files in git diff
-
-
-                Fix exception handling in GitAnalyzer's diff processing:
-                - Add try-catch block around diff.decode() calls
-                - Skip binary files with warning message
-                - Maintain list of processed files even if some fail
-                
-                Files modified:
-                - git_analyzer.py: Add binary file detection and error handling
-                - main.py: Improve error reporting for failed diff analysis"""
+                4. Common mistakes to avoid:
+                   - Don't say a file was "added" if its Change Status is "Modified existing file"
+                   - Don't describe existing features or classes as new
+                   - Don't include changes that aren't in the diff
+                   - Don't speculate about future changes"""
             },
             {
                 "role": "user",
@@ -278,11 +288,21 @@ class GitCommitAgent:
         summary = "Changes to be committed:\n\n"
         
         for change in changes:
+            change_type_desc = {
+                'M': 'Modified existing file',
+                'A': 'New file',
+                'D': 'Deleted file',
+                'R': 'Renamed file',
+                'T': 'Type changed'
+            }.get(change['change_type'], change['change_type'])
+            
             summary += (
                 f"File: {change['path']}\n"
-                f"Type: {change['change_type']}\n"
+                f"Change Status: {change_type_desc}\n"
                 f"Changes: +{change['additions']}, -{change['deletions']}\n"
                 f"File type: {change['file_type']}\n"
+                f"Change description: Changes to this file include modifications to "
+                f"add or update functionality as shown in the diff below.\n"
                 f"Diff:\n{change['diff']}\n\n"
             )
         
@@ -318,13 +338,19 @@ class GitCommitAgent:
         """Continue the conversation with AI using the analysis"""
         self.conversation_history.append({
             "role": "user",
-            "content": f"""Based on this analysis:
+            "content": f"""Based on this analysis of the changes:
             
-            Files changed: {len(analysis['files_changed'])}
+            Files modified: {len(analysis['files_changed'])}
             Total changes: +{analysis['total_additions']}, -{analysis['total_deletions']}
             File types: {', '.join(analysis['file_types'])}
             Change types: {analysis['changes_by_type']}
             Major changes: {', '.join(analysis['major_changes']) if analysis['major_changes'] else 'None'}
+            
+            Remember:
+            1. These files are MODIFIED, not new
+            2. Focus on what specifically changed in each file
+            3. Describe the actual modifications shown in the diff
+            4. Don't describe files or classes as new unless marked as 'New file'
             
             Generate a detailed commit message following the required format."""
         })

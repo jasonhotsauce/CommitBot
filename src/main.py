@@ -28,9 +28,10 @@ console = Console(theme=custom_theme)
 
 @click.command()
 @click.option('--dry-run', is_flag=True, help='Show suggested message without committing')
-@click.option('--model', default='gpt-4', help='OpenAI model to use')
+@click.option('--model', default='gpt-4o-mini', help='OpenAI model to use')
+@click.option('--local', is_flag=True, default=False, help='Use local model')
 @click.option('--verbose', '-v', is_flag=True, help='Show detailed analysis')
-def main(dry_run: bool, model: str, verbose: bool):
+def main(dry_run: bool, model: str, local: bool, verbose: bool):
     """AI-powered Git commit message generator"""
     try:
         load_dotenv()
@@ -39,7 +40,7 @@ def main(dry_run: bool, model: str, verbose: bool):
             sys.exit(1)
         
         git = GitAnalyzer()
-        agent = GitCommitAgent(model=model, verbose=verbose)
+        agent = GitCommitAgent(model=model, local=local, verbose=verbose)
         
         staged_changes = git.get_staged_changes()
         untracked_files = git.get_untracked_files()
