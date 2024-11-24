@@ -14,7 +14,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'gc=main:main',
+            'commit-assistant=main:main',
         ],
     },
 ) 

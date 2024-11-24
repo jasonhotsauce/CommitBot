@@ -1,13 +1,13 @@
 from git import Repo
 from typing import Dict, List
 from rich.console import Console
-from rich.syntax import Syntax
 
 console = Console()
 
 class GitAnalyzer:
-    def __init__(self, repo_path='.'):
+    def __init__(self, repo_path='.', verbose=False):
         self.repo = Repo(repo_path)
+        self.verbose = verbose
     
     def get_staged_changes(self) -> List[Dict]:
         """Get detailed information about staged changes"""
@@ -81,6 +81,42 @@ class GitAnalyzer:
         """Get list of untracked files"""
         return self.repo.untracked_files
     
+    def analyze_changes(self) -> Dict:
+        """Analyze the changes in detail"""
+        # Get the raw changes instead of the formatted summary
+        changes = self.get_staged_changes()  # This returns List[Dict]
+        
+        analysis = {
+            'file_types': set(),
+            'total_additions': 0,
+            'total_deletions': 0,
+            'changes_by_type': {},
+            'major_changes': [],
+            'files_changed': [],
+            'summary': self._prepare_changes_summary()
+        }
+        
+        for change in changes:
+            analysis['file_types'].add(change['file_type'])
+            analysis['total_additions'] += change['additions']
+            analysis['total_deletions'] += change['deletions']
+            analysis['files_changed'].append({
+                'path': change['path'],
+                'change_type': change['change_type'],
+                'changes': f"+{change['additions']}, -{change['deletions']}"
+            })
+            
+            if change['change_type'] not in analysis['changes_by_type']:
+                analysis['changes_by_type'][change['change_type']] = 0
+            analysis['changes_by_type'][change['change_type']] += 1
+            
+            if change['additions'] + change['deletions'] > 50:
+                analysis['major_changes'].append(change['path'])
+        
+        # Convert set to list for JSON serialization
+        analysis['file_types'] = list(analysis['file_types'])
+        return analysis
+    
     def commit_changes(self, message: str) -> bool:
         """Commit staged changes with the given message"""
         try:
@@ -92,4 +128,35 @@ class GitAnalyzer:
             return True
         except Exception as e:
             console.print(f"[error]Failed to commit changes: {str(e)}[/]")
-            return False 
+            return False
+        
+    def _prepare_changes_summary(self) -> str:
+        """Prepare a detailed summary of changes for AI analysis"""
+        staged_changes = self.get_staged_changes()
+        untracked_files = self.get_untracked_files()
+        
+        summary = "Changes to be committed:\n\n"
+        
+        for change in staged_changes:
+            change_type_desc = {
+                'M': 'Modified existing file',
+                'A': 'New file',
+                'D': 'Deleted file',
+                'R': 'Renamed file',
+                'T': 'Type changed'
+            }.get(change['change_type'], change['change_type'])
+            
+            summary += (
+                f"File: {change['path']}\n"
+                f"Change Status: {change_type_desc}\n"
+                f"Changes: +{change['additions']}, -{change['deletions']}\n"
+                f"File type: {change['file_type']}\n"
+                f"Change description: Changes to this file include modifications to "
+                f"add or update functionality as shown in the diff below.\n"
+                f"Diff:\n{change['diff']}\n\n"
+            )
+        
+        if untracked_files:
+            summary += "\nUntracked files:\n" + "\n".join(untracked_files)
+        
+        return summary

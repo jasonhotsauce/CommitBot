@@ -39,18 +39,17 @@ def main(dry_run: bool, model: str, local: bool, verbose: bool):
             console.print("[error]OPENAI_API_KEY not found in environment variables[/]")
             sys.exit(1)
         
-        git = GitAnalyzer()
-        agent = GitCommitAgent(model=model, local=local, verbose=verbose)
+        git = GitAnalyzer(verbose=verbose)
+        git.analyze_changes()
+        agent = GitCommitAgent(git_analyzer=git, model=model, local=local, verbose=verbose)
         
         staged_changes = git.get_staged_changes()
-        untracked_files = git.get_untracked_files()
-        
         if not staged_changes:
             console.print("[warning]No staged changes found. Stage your changes first with 'git add'[/]")
             sys.exit(1)
         
         console.print("[info]AI agent is analyzing changes...[/]")
-        commit_message = agent.decide_next_action(staged_changes, untracked_files)
+        commit_message = agent.decide_next_action()
         
         if commit_message:
             console.print("\n[header]AI suggested commit message:[/]")
@@ -63,7 +62,9 @@ def main(dry_run: bool, model: str, local: bool, verbose: bool):
                     console.print("[error]Failed to commit changes[/]")
         
     except Exception as e:
+        import traceback
         console.print(f"[error]An error occurred: {str(e)}[/]")
+        console.print(f"[error]Stacktrace:\n{traceback.format_exc()}[/]")
         sys.exit(1)
 
 if __name__ == "__main__":
