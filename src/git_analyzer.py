@@ -1,18 +1,21 @@
-from git import Repo
+"""Module for analyzing Git repositories and their changes, providing detailed insights about staged files and commits."""
+
 from typing import Dict, List
+from git import Repo
 from rich.console import Console
 
 console = Console()
 
 class GitAnalyzer:
+    """Class for analyzing Git repositories and their changes"""
     def __init__(self, repo_path='.', verbose=False):
         self.repo = Repo(repo_path)
         self.verbose = verbose
-    
+  
     def get_staged_changes(self) -> List[Dict]:
         """Get detailed information about staged changes"""
         changes = []
-        
+     
         try:
             # For repositories with commits
             staged_diff = self.repo.index.diff("HEAD")
@@ -21,7 +24,7 @@ class GitAnalyzer:
                 try:
                     # Get the raw diff text
                     diff_text = self.repo.git.diff('--cached', diff.a_path)
-                    
+                  
                     # Determine change type
                     change_type = 'M'  # Default to modified
                     if diff.new_file:
@@ -30,7 +33,7 @@ class GitAnalyzer:
                         change_type = 'D'
                     elif diff.renamed:
                         change_type = 'R'
-                    
+                  
                     change_info = {
                         'path': diff.a_path,
                         'change_type': change_type,
@@ -42,27 +45,27 @@ class GitAnalyzer:
                     changes.append(change_info)
                 except Exception as e:
                     console.print(f"[warning]Could not process file {diff.a_path}: {str(e)}[/]")
-                    
+
         except Exception as e:
             # For newly initialized repositories
             console.print("[info]Processing new repository...[/]")
-            
+
             # Get all staged files (works for both new and existing repos)
             staged_files = self.repo.git.diff('--cached', '--name-only').split('\n')
             staged_files = [f for f in staged_files if f]  # Remove empty strings
-            
+
             for staged_file in staged_files:
                 try:
                     # Get the diff for the staged file
                     diff_text = self.repo.git.diff('--cached', staged_file)
-                    
+
                     # For new repositories, check if file exists in HEAD
                     try:
                         self.repo.head.commit.tree[staged_file]
                         change_type = 'M'  # File exists in HEAD, so it's modified
                     except (KeyError, ValueError):
                         change_type = 'A'  # File doesn't exist in HEAD, so it's new
-                    
+
                     change_info = {
                         'path': staged_file,
                         'change_type': change_type,
@@ -74,9 +77,9 @@ class GitAnalyzer:
                     changes.append(change_info)
                 except Exception as e:
                     console.print(f"[warning]Could not process file {staged_file}: {str(e)}[/]")
-        
+
         return changes
-    
+
     def get_untracked_files(self) -> List[str]:
         """Get list of untracked files"""
         return self.repo.untracked_files
