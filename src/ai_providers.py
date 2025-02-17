@@ -4,11 +4,6 @@ from abc import ABC, abstractmethod
 from typing import Optional, Sequence, Union, Callable
 from ollama import Message, Tool, Client as OllamaClient
 
-class AIResponse(BaseModel):
-    """Response from the AI provider"""
-    function_call: bool
-    content: str
-
 class AIProvider(ABC):
     """Abstract base class for AI providers"""
 

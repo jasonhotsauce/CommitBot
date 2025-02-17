@@ -1,4 +1,5 @@
-"""Module for analyzing Git repositories and their changes, providing detailed insights about staged files and commits."""
+"""Module for analyzing Git repositories and their changes, 
+providing detailed insights about staged files and commits."""
 
 from typing import Dict, List
 from git import Repo
@@ -15,7 +16,7 @@ class GitAnalyzer:
     def get_staged_changes(self) -> List[Dict]:
         """Get detailed information about staged changes"""
         changes = []
-     
+ 
         try:
             # For repositories with commits
             staged_diff = self.repo.index.diff("HEAD")
@@ -46,10 +47,11 @@ class GitAnalyzer:
                 except Exception as e:
                     console.print(f"[warning]Could not process file {diff.a_path}: {str(e)}[/]")
 
-        except Exception as e:
+        except (ValueError, AttributeError) as e:
             # For newly initialized repositories
-            console.print("[info]Processing new repository...[/]")
-
+            if self.verbose:
+                console.print(f"[info]Processing new repository: {str(e)}[/]")
+            
             # Get all staged files (works for both new and existing repos)
             staged_files = self.repo.git.diff('--cached', '--name-only').split('\n')
             staged_files = [f for f in staged_files if f]  # Remove empty strings
@@ -61,7 +63,7 @@ class GitAnalyzer:
 
                     # For new repositories, check if file exists in HEAD
                     try:
-                        self.repo.head.commit.tree[staged_file]
+                        _ = self.repo.head.commit.tree[staged_file]
                         change_type = 'M'  # File exists in HEAD, so it's modified
                     except (KeyError, ValueError):
                         change_type = 'A'  # File doesn't exist in HEAD, so it's new
